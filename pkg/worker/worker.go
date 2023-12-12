@@ -57,7 +57,7 @@ func (w *Worker) run() (err error) {
 		return err
 	}
 
-	//err = w.upsertTables()
+	err = w.upsertTables()
 	if err != nil {
 		return err
 	}
