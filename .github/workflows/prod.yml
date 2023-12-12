@@ -36,5 +36,5 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: |
-            smartenergyplatform/billing:prod
-            ghcr.io/senergy-platform/billing:prod
+            smartenergyplatform/timesale-usage:prod
+            ghcr.io/senergy-platform/timescale-usage:prod
