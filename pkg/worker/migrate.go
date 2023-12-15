@@ -31,5 +31,10 @@ func (w *Worker) migrate() error {
 		return err
 	}
 
+	_, err = w.conn.Exec(fmt.Sprintf("ALTER TABLE %v.usage ADD COLUMN IF NOT EXISTS bytes_per_day DOUBLE PRECISION;", w.config.PostgresUsageSchema))
+	if err != nil {
+		return err
+	}
+
 	return nil
 }

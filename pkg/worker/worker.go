@@ -29,18 +29,21 @@ import (
 )
 
 type Worker struct {
-	conn   *pgx.Conn
+	conn   *pgx.ConnPool
 	config configuration.Config
 }
 
 func Start(ctx context.Context, config configuration.Config) error {
-	conn, err := pgx.Connect(pgx.ConnConfig{
-		Host:     config.PostgresHost,
-		Port:     config.PostgresPort,
-		Database: config.PostgresDb,
-		User:     config.PostgresUser,
-		Password: config.PostgresPw,
-	})
+	conn, err := pgx.NewConnPool(pgx.ConnPoolConfig{
+		ConnConfig: pgx.ConnConfig{
+			Host:     config.PostgresHost,
+			Port:     config.PostgresPort,
+			Database: config.PostgresDb,
+			User:     config.PostgresUser,
+			Password: config.PostgresPw,
+		},
+		MaxConnections: 10,
+		AcquireTimeout: 0})
 	if err != nil {
 		return err
 	}
@@ -86,21 +89,7 @@ func (w *Worker) upsertTables() error {
 	log.Printf("Got %v tables\n", len(tables))
 
 	for _, table := range tables {
-		row := w.conn.QueryRow("SELECT hypertable_size('\"" + table + "\"');")
-		var val pgtype.Int8
-		err = row.Scan(&val)
-		if err != nil {
-			return err
-		}
-		var tableSizeBytes int64 = 0
-		if val.Get() != nil {
-			tableSizeBytes = val.Get().(int64)
-		}
-		log.Printf("%v %v\n", table, tableSizeBytes)
-
-		now := time.Now().Format(time.RFC3339)
-		query := fmt.Sprintf("INSERT INTO %v.usage (\"table\", bytes, updated_at) VALUES ('%v', %v, '%v') ON CONFLICT (\"table\") DO UPDATE SET bytes = %v, updated_at = '%v';", w.config.PostgresUsageSchema, table, tableSizeBytes, now, tableSizeBytes, now)
-		_, err = w.conn.Exec(query)
+		err = w.upsert(table, table)
 		if err != nil {
 			return err
 		}
@@ -116,23 +105,50 @@ func (w *Worker) upsertViews() error {
 	log.Printf("Got %v views\n", len(views))
 
 	for _, view := range views {
-		row := w.conn.QueryRow("SELECT hypertable_size('_timescaledb_internal.\"" + view.hypertable + "\"');")
-		var val pgtype.Int8
-		err = row.Scan(&val)
+		err = w.upsert(view.hypertable, view.view)
 		if err != nil {
 			return err
 		}
-		var tableSizeBytes int64 = 0
-		if val.Get() != nil {
-			tableSizeBytes = val.Get().(int64)
-		}
-		log.Printf("%v %v\n", view, tableSizeBytes)
+	}
+	return nil
+}
 
-		now := time.Now().Format(time.RFC3339)
-		_, err = w.conn.Exec(fmt.Sprintf("INSERT INTO %v.usage (\"table\", bytes, updated_at) VALUES ('%v', %v, '%v') ON CONFLICT (\"table\") DO UPDATE SET bytes = %v, updated_at = '%v';", w.config.PostgresUsageSchema, view.view, tableSizeBytes, now, tableSizeBytes, now))
-		if err != nil {
-			return err
-		}
+func (w *Worker) upsert(hypertable string, saveAsTable string) (err error) {
+	row := w.conn.QueryRow("SELECT hypertable_size('\"" + hypertable + "\"');")
+	var val pgtype.Int8
+	err = row.Scan(&val)
+	if err != nil {
+		return err
+	}
+	var tableSizeBytes int64 = 0
+	if val.Get() != nil {
+		tableSizeBytes = val.Get().(int64)
+	}
+
+	now := time.Now()
+	firstDate := now
+	pgdate := pgtype.Timestamptz{}
+	err = w.conn.QueryRow("SELECT time from \"" + hypertable + "\" ORDER BY time ASC LIMIT 1;").Scan(&pgdate)
+	if err != nil && err != pgx.ErrNoRows {
+		return err
+	}
+	if err == nil {
+		firstDate = pgdate.Get().(time.Time)
+	}
+	days := now.Sub(firstDate).Hours() / 24
+
+	var bytesPerDay float64 = 0
+	if days != 0 {
+		bytesPerDay = float64(tableSizeBytes) / days
+	}
+
+	log.Printf("%v %v %v\n", hypertable, tableSizeBytes, bytesPerDay)
+
+	nowStr := now.Format(time.RFC3339)
+	query := fmt.Sprintf("INSERT INTO %v.usage (\"table\", bytes, updated_at, bytes_per_day) VALUES ('%v', %v, '%v', %v) ON CONFLICT (\"table\") DO UPDATE SET bytes = %v, updated_at = '%v', bytes_per_day = %v;", w.config.PostgresUsageSchema, saveAsTable, tableSizeBytes, nowStr, bytesPerDay, tableSizeBytes, nowStr, bytesPerDay)
+	_, err = w.conn.Exec(query)
+	if err != nil {
+		return err
 	}
 	return nil
 }
