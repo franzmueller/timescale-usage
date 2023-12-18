@@ -5,6 +5,7 @@ on:
     branches:
       - master
       - main
+      - frz
   workflow_dispatch:
 
 jobs:
