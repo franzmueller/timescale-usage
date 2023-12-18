@@ -29,7 +29,6 @@ jobs:
         uses: mathieudutour/github-tag-action@v6.1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          custom_tag: module/${{ github.ref_name }}
           tag_prefix: ""
       - name: Build and push
         uses: docker/build-push-action@v2
