@@ -128,7 +128,7 @@ func (w *Worker) upsert(hypertable string, saveAsTable string, namespace string)
 	now := time.Now()
 	firstDate := now
 	pgdate := pgtype.Timestamptz{}
-	err = w.conn.QueryRow("SELECT time from '\"" + namespace + "\".\"" + hypertable + "\" ORDER BY time ASC LIMIT 1;").Scan(&pgdate)
+	err = w.conn.QueryRow("SELECT time from \"" + namespace + "\".\"" + hypertable + "\" ORDER BY time ASC LIMIT 1;").Scan(&pgdate)
 	if err != nil && err != pgx.ErrNoRows {
 		return err
 	}
