@@ -89,7 +89,7 @@ func (w *Worker) upsertTables() error {
 	log.Printf("Got %v tables\n", len(tables))
 
 	for _, table := range tables {
-		err = w.upsert(table, table)
+		err = w.upsert(table, table, w.config.PostgresSourceSchema)
 		if err != nil {
 			return err
 		}
@@ -105,7 +105,7 @@ func (w *Worker) upsertViews() error {
 	log.Printf("Got %v views\n", len(views))
 
 	for _, view := range views {
-		err = w.upsert(view.hypertable, view.view)
+		err = w.upsert(view.hypertable, view.view, "_timescaledb_internal")
 		if err != nil {
 			return err
 		}
@@ -113,8 +113,8 @@ func (w *Worker) upsertViews() error {
 	return nil
 }
 
-func (w *Worker) upsert(hypertable string, saveAsTable string) (err error) {
-	row := w.conn.QueryRow("SELECT hypertable_size('\"" + hypertable + "\"');")
+func (w *Worker) upsert(hypertable string, saveAsTable string, namespace string) (err error) {
+	row := w.conn.QueryRow("SELECT hypertable_size('\"" + namespace + "\".\"" + hypertable + "\"');")
 	var val pgtype.Int8
 	err = row.Scan(&val)
 	if err != nil {
