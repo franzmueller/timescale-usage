@@ -39,4 +39,4 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: |
-            ghcr.io/franzmueller/timescale-usage:${{ new_tag }}
+            ghcr.io/franzmueller/timescale-usage:${{ steps.tag_version.new_tag }}
